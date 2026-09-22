@@ -1,9 +1,9 @@
 // ============================================================
 // AI Provider Abstraction Layer
 // ============================================================
-// This module defines the contract for all AI providers.
-// Connect Gemini, Groq, or OpenAI by implementing AIProvider.
-// Never put API keys here — use environment variables only.
+// All AI calls run SERVER-SIDE ONLY.
+// The GEMINI_API_KEY is read from process.env — never exposed
+// to the browser, never in client bundles (no NEXT_PUBLIC_ prefix).
 // ============================================================
 
 import type {
@@ -11,6 +11,9 @@ import type {
   Opportunity,
   ServiceCategory,
   OutreachDraft,
+  IntentStrength,
+  UrgencyLevel,
+  BudgetSignal,
 } from "@/types";
 
 // ----------------------------------------------------------
@@ -20,20 +23,8 @@ import type {
 export interface AIProvider {
   name: string;
   isAvailable(): boolean;
-
-  /**
-   * Analyze raw content and extract intent signals.
-   */
   analyzeIntent(content: string, context?: string): Promise<IntentAnalysis>;
-
-  /**
-   * Match content against OBYON service categories.
-   */
   matchServices(content: string): Promise<ServiceCategory[]>;
-
-  /**
-   * Generate a personalized outreach message draft.
-   */
   generateOutreach(opportunity: Opportunity): Promise<OutreachDraft>;
 }
 
@@ -43,14 +34,14 @@ export interface AIProvider {
 
 export interface AIProviderConfig {
   provider: "gemini" | "groq" | "openai" | "mock";
-  apiKey: string; // Loaded from env — never hardcoded
+  apiKey: string;
   model?: string;
   maxTokens?: number;
   temperature?: number;
 }
 
 // ----------------------------------------------------------
-// Mock Provider (Phase 1 — returns pre-baked analysis)
+// Mock Provider (fallback when no API key is configured)
 // ----------------------------------------------------------
 
 export class MockAIProvider implements AIProvider {
@@ -61,7 +52,7 @@ export class MockAIProvider implements AIProvider {
   }
 
   async analyzeIntent(content: string): Promise<IntentAnalysis> {
-    // TODO Phase 2: Replace with real AI call
+    void content;
     return {
       opportunityId: "",
       provider: "mock",
@@ -85,13 +76,11 @@ export class MockAIProvider implements AIProvider {
   }
 
   async matchServices(content: string): Promise<ServiceCategory[]> {
-    // TODO Phase 2: Replace with real AI call
     void content;
     return ["ai_automation"];
   }
 
   async generateOutreach(opportunity: Opportunity): Promise<OutreachDraft> {
-    // TODO Phase 2: Replace with real AI call
     return {
       id: `draft-${Date.now()}`,
       opportunityId: opportunity.id,
@@ -106,43 +95,244 @@ export class MockAIProvider implements AIProvider {
 }
 
 // ----------------------------------------------------------
-// Gemini Provider Stub
+// Gemini Provider — Live Implementation
 // ----------------------------------------------------------
+
+const OBYON_SERVICES_LIST = `
+- ai_automation: AI workflow automation, process automation, n8n, Make, Zapier
+- ai_agents: Autonomous AI agents, LLM agents, multi-step workflows
+- ai_chatbots: Conversational AI, chatbots, RAG, knowledge base bots
+- ai_integrations: OpenAI/Gemini/LLM integrations into existing products
+- saas_development: SaaS product development, MVP, full-stack apps
+- web_development: Websites, web apps, Next.js, React, landing pages
+- mobile_development: iOS, Android, React Native, Flutter apps
+- custom_software: Bespoke software, internal tools, platforms
+- video_editing: YouTube, social media, ad video editing
+- ai_video: AI-generated video, faceless channels, HeyGen, Runway
+- marketing_automation: Email sequences, lead nurturing, campaign automation
+- whatsapp_automation: WhatsApp Business API, chatbots, retail automation
+- crm_automation: CRM data entry, lead routing, Salesforce/HubSpot automation
+- data_automation: ETL pipelines, data integrations, CSV automation
+- ui_ux: Figma design, wireframing, UX research
+- cloud_devops: AWS/GCP/Azure, Docker, CI/CD, Kubernetes
+- api_integrations: REST/GraphQL/webhook integrations
+- other: Other digital/technology services
+`.trim();
+
+const INTENT_ANALYSIS_PROMPT = (content: string, context?: string) => `
+You are an AI analyst for OBYON, a digital technology agency. Your job is to analyze online posts and messages to determine if the author has a genuine buying intent for technology or digital services.
+
+${context ? `Context: ${context}\n` : ""}
+Analyze this content:
+"""
+${content}
+"""
+
+OBYON's service categories:
+${OBYON_SERVICES_LIST}
+
+Respond with ONLY a valid JSON object (no markdown, no explanation) using exactly this structure:
+{
+  "detectedNeed": "one sentence describing what technology/service they need",
+  "detectedProblem": "one sentence describing their core business problem",
+  "detectedRequirement": "one sentence describing their specific requirement",
+  "matchedServices": ["array", "of", "service_category_keys", "from", "the", "list"],
+  "primaryService": "single_best_matching_service_category_key",
+  "intentScore": <number 0-100, how strongly they want to buy/hire>,
+  "urgencyScore": <number 0-100, how urgently they need it>,
+  "confidenceScore": <number 0-100, how confident you are in this analysis>,
+  "intentStrength": "<explicit|implicit|weak>",
+  "urgency": "<critical|high|medium|low>",
+  "budgetSignal": "<confirmed_budget|implied_budget|no_signal|budget_concern>",
+  "reasoning": "2-3 sentence explanation of your scoring and why this is or isn't a strong opportunity",
+  "suggestedOutreach": "A personalized 3-4 sentence outreach message from OBYON addressing their specific need directly. Be warm, specific, and mention how OBYON can solve exactly what they described.",
+  "tags": ["relevant", "keyword", "tags", "max", "6"]
+}
+
+Scoring guide:
+- intentScore 80-100: Explicitly asking to hire/buy ("looking for a developer", "need someone to build", "taking quotes")
+- intentScore 60-79: Clearly implied need ("we're struggling with X", "wish we had Y automated")
+- intentScore 40-59: Possible need but unclear ("thinking about X", "has anyone used Y")
+- intentScore 0-39: Vague signal or not a buying intent
+
+IMPORTANT: Return ONLY the JSON object. No extra text.
+`.trim();
+
+const OUTREACH_PROMPT = (opportunity: Opportunity) => `
+You are a senior business development writer for OBYON, a digital technology agency.
+
+Write a personalized outreach message for this opportunity:
+
+Author: ${opportunity.authorName}${opportunity.authorHandle ? ` (${opportunity.authorHandle})` : ""}
+Platform: ${opportunity.sourceName}
+Their post/content: "${opportunity.content}"
+Detected need: ${opportunity.detectedNeed}
+Primary service: ${opportunity.primaryService}
+Urgency: ${opportunity.urgency}
+
+Write a short, professional outreach message (4-6 sentences). Requirements:
+- Address them by name if available
+- Reference their specific situation/problem (not generic)
+- Mention OBYON's relevant capability concisely
+- Include a clear, low-pressure call to action
+- Tone: warm, confident, human — NOT salesy or pushy
+- Do NOT use brackets like [your name] — write it as if sending now
+
+Return ONLY the message text. No subject line. No signature. No extra explanation.
+`.trim();
 
 export class GeminiProvider implements AIProvider {
   name = "gemini";
   private apiKey: string;
+  private modelName: string;
 
-  constructor() {
-    // Never hardcode — load from environment
+  constructor(modelName = "gemini-1.5-flash") {
+    // Server-side only — loaded from process.env
     this.apiKey = process.env.GEMINI_API_KEY ?? "";
+    this.modelName = modelName;
   }
 
   isAvailable(): boolean {
     return this.apiKey.length > 0;
   }
 
-  async analyzeIntent(_content: string): Promise<IntentAnalysis> {
+  private async callGemini(prompt: string): Promise<string> {
     if (!this.isAvailable()) {
-      throw new Error("Gemini API key not configured. Set GEMINI_API_KEY in .env.local");
+      throw new Error("GEMINI_API_KEY is not set in .env.local");
     }
-    // TODO Phase 2: Implement Gemini API call
-    throw new Error("Gemini provider not yet implemented — coming in Phase 2");
+
+    // Dynamic import keeps @google/generative-ai server-side only
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const genAI = new GoogleGenerativeAI(this.apiKey);
+    const model = genAI.getGenerativeModel({
+      model: this.modelName,
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 1024,
+      },
+    });
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    return response.text();
   }
 
-  async matchServices(_content: string): Promise<ServiceCategory[]> {
-    // TODO Phase 2: Implement Gemini API call
-    throw new Error("Gemini provider not yet implemented — coming in Phase 2");
+  async analyzeIntent(
+    content: string,
+    context?: string
+  ): Promise<IntentAnalysis> {
+    const prompt = INTENT_ANALYSIS_PROMPT(content, context);
+    const raw = await this.callGemini(prompt);
+
+    // Strip any accidental markdown fences
+    const cleaned = raw
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      throw new Error(`Gemini returned invalid JSON: ${cleaned.slice(0, 200)}`);
+    }
+
+    // Validate and coerce the response into IntentAnalysis shape
+    const intentScore = Math.min(100, Math.max(0, Number(parsed.intentScore) || 50));
+    const urgencyScore = Math.min(100, Math.max(0, Number(parsed.urgencyScore) || 50));
+    const confidenceScore = Math.min(100, Math.max(0, Number(parsed.confidenceScore) || 50));
+
+    const validIntentStrengths: IntentStrength[] = ["explicit", "implicit", "weak"];
+    const validUrgencies: UrgencyLevel[] = ["critical", "high", "medium", "low"];
+    const validBudgetSignals: BudgetSignal[] = [
+      "confirmed_budget",
+      "implied_budget",
+      "no_signal",
+      "budget_concern",
+    ];
+
+    const intentStrength: IntentStrength = validIntentStrengths.includes(
+      parsed.intentStrength as IntentStrength
+    )
+      ? (parsed.intentStrength as IntentStrength)
+      : intentScore >= 80
+      ? "explicit"
+      : intentScore >= 60
+      ? "implicit"
+      : "weak";
+
+    const urgency: UrgencyLevel = validUrgencies.includes(parsed.urgency as UrgencyLevel)
+      ? (parsed.urgency as UrgencyLevel)
+      : urgencyScore >= 80
+      ? "critical"
+      : urgencyScore >= 60
+      ? "high"
+      : urgencyScore >= 40
+      ? "medium"
+      : "low";
+
+    const budgetSignal: BudgetSignal = validBudgetSignals.includes(
+      parsed.budgetSignal as BudgetSignal
+    )
+      ? (parsed.budgetSignal as BudgetSignal)
+      : "no_signal";
+
+    const matchedServices = Array.isArray(parsed.matchedServices)
+      ? (parsed.matchedServices as ServiceCategory[])
+      : ["other" as ServiceCategory];
+
+    const primaryService: ServiceCategory =
+      typeof parsed.primaryService === "string"
+        ? (parsed.primaryService as ServiceCategory)
+        : matchedServices[0] ?? "other";
+
+    return {
+      opportunityId: "",
+      provider: "gemini",
+      analyzedAt: new Date().toISOString(),
+      detectedNeed: String(parsed.detectedNeed ?? ""),
+      detectedProblem: String(parsed.detectedProblem ?? ""),
+      detectedRequirement: String(parsed.detectedRequirement ?? ""),
+      matchedServices,
+      primaryService,
+      intentScore,
+      urgencyScore,
+      confidenceScore,
+      intentStrength,
+      urgency,
+      budgetSignal,
+      reasoning: String(parsed.reasoning ?? ""),
+      suggestedOutreach: String(parsed.suggestedOutreach ?? ""),
+      tags: Array.isArray(parsed.tags) ? (parsed.tags as string[]) : [],
+      rawResponse: parsed,
+    };
   }
 
-  async generateOutreach(_opportunity: Opportunity): Promise<OutreachDraft> {
-    // TODO Phase 2: Implement Gemini API call
-    throw new Error("Gemini provider not yet implemented — coming in Phase 2");
+  async matchServices(content: string): Promise<ServiceCategory[]> {
+    const analysis = await this.analyzeIntent(content);
+    return analysis.matchedServices;
+  }
+
+  async generateOutreach(opportunity: Opportunity): Promise<OutreachDraft> {
+    const prompt = OUTREACH_PROMPT(opportunity);
+    const body = await this.callGemini(prompt);
+
+    return {
+      id: `draft-${Date.now()}`,
+      opportunityId: opportunity.id,
+      platform: opportunity.sourceName,
+      subject: null,
+      body: body.trim(),
+      tone: "professional",
+      generatedAt: new Date().toISOString(),
+      isApproved: false,
+    };
   }
 }
 
 // ----------------------------------------------------------
-// Groq Provider Stub
+// Groq Provider Stub (ready for Phase 3)
 // ----------------------------------------------------------
 
 export class GroqProvider implements AIProvider {
@@ -158,26 +348,20 @@ export class GroqProvider implements AIProvider {
   }
 
   async analyzeIntent(_content: string): Promise<IntentAnalysis> {
-    if (!this.isAvailable()) {
-      throw new Error("Groq API key not configured. Set GROQ_API_KEY in .env.local");
-    }
-    // TODO Phase 2: Implement Groq API call
-    throw new Error("Groq provider not yet implemented — coming in Phase 2");
+    throw new Error("Groq provider not yet implemented — coming in Phase 3");
   }
 
   async matchServices(_content: string): Promise<ServiceCategory[]> {
-    // TODO Phase 2: Implement Groq API call
-    throw new Error("Groq provider not yet implemented — coming in Phase 2");
+    throw new Error("Groq provider not yet implemented — coming in Phase 3");
   }
 
   async generateOutreach(_opportunity: Opportunity): Promise<OutreachDraft> {
-    // TODO Phase 2: Implement Groq API call
-    throw new Error("Groq provider not yet implemented — coming in Phase 2");
+    throw new Error("Groq provider not yet implemented — coming in Phase 3");
   }
 }
 
 // ----------------------------------------------------------
-// Provider Factory
+// Provider Factory — reads AI_PROVIDER from env
 // ----------------------------------------------------------
 
 export function createAIProvider(config?: Partial<AIProviderConfig>): AIProvider {
@@ -194,5 +378,5 @@ export function createAIProvider(config?: Partial<AIProviderConfig>): AIProvider
   }
 }
 
-// Default export — auto-selects based on env
+// Default export — auto-selects based on AI_PROVIDER env var
 export const aiProvider = createAIProvider();

@@ -398,7 +398,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
           )}
 
           {/* Actions */}
-          <OpportunityActions outreachMessage={opp.suggestedOutreach} />
+          <OpportunityActions outreachMessage={opp.suggestedOutreach} opportunity={opp} />
         </div>
       </div>
     </div>
