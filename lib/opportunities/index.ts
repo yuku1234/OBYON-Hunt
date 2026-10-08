@@ -98,6 +98,18 @@ export class OpportunityService {
   }
 
   /**
+   * Add a newly discovered opportunity.
+   */
+  async addOpportunity(opp: Opportunity): Promise<void> {
+    const existingIndex = mockOpportunities.findIndex((o) => o.id === opp.id || o.sourceUrl === opp.sourceUrl);
+    if (existingIndex >= 0) {
+      mockOpportunities[existingIndex] = opp;
+    } else {
+      mockOpportunities.unshift(opp);
+    }
+  }
+
+  /**
    * Get bookmarked opportunities.
    */
   async getBookmarked(): Promise<Opportunity[]> {
