@@ -186,7 +186,7 @@ export class GeminiProvider implements AIProvider {
   private apiKey: string;
   private modelName: string;
 
-  constructor(modelName = "gemini-1.5-flash") {
+  constructor(modelName = "gemini-2.5-flash") {
     // Server-side only — loaded from process.env
     this.apiKey = process.env.GEMINI_API_KEY ?? "";
     this.modelName = modelName;
@@ -201,20 +201,19 @@ export class GeminiProvider implements AIProvider {
       throw new Error("GEMINI_API_KEY is not set in .env.local");
     }
 
-    // Dynamic import keeps @google/generative-ai server-side only
-    const { GoogleGenerativeAI } = await import("@google/generative-ai");
-    const genAI = new GoogleGenerativeAI(this.apiKey);
-    const model = genAI.getGenerativeModel({
+    // Official @google/genai SDK (server-side only)
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: this.apiKey });
+
+    const result = await ai.models.generateContent({
       model: this.modelName,
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 1024,
+      contents: prompt,
+      config: {
+        temperature: 0.2,
       },
     });
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    return response.text();
+    return result.text || "";
   }
 
   async analyzeIntent(

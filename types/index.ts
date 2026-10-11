@@ -6,13 +6,27 @@
 // Enums / Literal Unions
 // ----------------------------------------------------------
 
+export type BuyerClassification = "BUYER" | "SELLER" | "GENERAL" | "UNKNOWN";
+
+export type LeadStatus =
+  | "NEW"
+  | "QUALIFIED"
+  | "CONTACTED"
+  | "REPLIED"
+  | "MEETING"
+  | "WON"
+  | "LOST";
+
 export type OpportunityStatus =
+  | LeadStatus
   | "new"
   | "reviewing"
   | "contacted"
   | "qualified"
   | "disqualified"
   | "converted";
+
+export type FreshnessFilter = "24h" | "3d" | "7d" | "30d";
 
 export type UrgencyLevel = "critical" | "high" | "medium" | "low";
 
@@ -100,6 +114,8 @@ export interface Opportunity {
   sourceName: string;
   sourceType: SourceType;
   sourceUrl: string;
+  sourceTitle?: string;
+  sourcePlatform?: string;
 
   // Author / Company
   authorName: string;
@@ -111,13 +127,15 @@ export interface Opportunity {
   // Content
   title: string;
   content: string;
+  evidence?: string;
   publishedAt: string;
   discoveredAt: string;
 
-  // AI-detected signals
+  // AI-detected signals & Classification
   detectedNeed: string;
   detectedProblem: string;
   detectedRequirement: string;
+  buyerClassification?: BuyerClassification;
 
   // OBYON matching
   matchedServices: ServiceCategory[];
@@ -136,10 +154,33 @@ export interface Opportunity {
   suggestedOutreach: string;
   tags: string[];
 
-  // Workflow
+  // Workflow & Pipeline
   status: OpportunityStatus;
   isBookmarked: boolean;
   notes: string | null;
+  searchRunId?: string;
+}
+
+// ----------------------------------------------------------
+// Search Run (Discovery audit trace)
+// ----------------------------------------------------------
+
+export interface SearchRun {
+  id: string;
+  serviceCategory: string;
+  problem: string;
+  location: string;
+  freshness: FreshnessFilter;
+  minIntentScore: number;
+  queries: string[];
+  scannedCount: number;
+  buyerCount: number;
+  sellerCount: number;
+  generalCount: number;
+  unknownCount: number;
+  rejectedCount: number;
+  savedCount: number;
+  createdAt: string;
 }
 
 // ----------------------------------------------------------
@@ -172,14 +213,16 @@ export interface IntentAnalysis {
 }
 
 // ----------------------------------------------------------
-// Search / Discovery
+// Search / Discovery Input & Output
 // ----------------------------------------------------------
 
 export interface SearchQuery {
   query: string;
   serviceCategory: ServiceCategory | "all";
+  problemDescription?: string;
   location: string;
   sourceType: SourceType | "all";
+  freshness?: FreshnessFilter;
   dateFrom: string | null;
   dateTo: string | null;
   minIntentScore: number;
@@ -192,6 +235,12 @@ export interface SearchResult {
   totalFound: number;
   searchedAt: string;
   executionTimeMs: number;
+  searchRunId?: string;
+  queriesUsed?: string[];
+  scannedCount?: number;
+  buyerCount?: number;
+  rejectedCount?: number;
+  savedCount?: number;
 }
 
 // ----------------------------------------------------------

@@ -141,38 +141,76 @@ export function getBudgetSignalStyle(signal: BudgetSignal): {
 /**
  * Get styling for opportunity status.
  */
-export function getStatusStyle(status: OpportunityStatus): {
+/**
+ * Get styling for opportunity status / lead status.
+ */
+export function getStatusStyle(status: OpportunityStatus | string): {
   label: string;
   className: string;
 } {
-  switch (status) {
-    case "new":
-      return { label: "New", className: "bg-blue-500/10 text-blue-400 border-blue-500/20" };
-    case "reviewing":
+  const norm = String(status).toUpperCase();
+  switch (norm) {
+    case "NEW":
+      return { label: "NEW", className: "bg-blue-500/10 text-blue-400 border-blue-500/20" };
+    case "QUALIFIED":
       return {
-        label: "Reviewing",
-        className: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-      };
-    case "contacted":
-      return {
-        label: "Contacted",
-        className: "bg-violet-500/10 text-violet-400 border-violet-500/20",
-      };
-    case "qualified":
-      return {
-        label: "Qualified",
+        label: "QUALIFIED",
         className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
       };
-    case "disqualified":
+    case "CONTACTED":
       return {
-        label: "Disqualified",
-        className: "bg-red-500/10 text-red-400 border-red-500/20",
+        label: "CONTACTED",
+        className: "bg-violet-500/10 text-violet-400 border-violet-500/20",
       };
-    case "converted":
+    case "REPLIED":
       return {
-        label: "Converted",
+        label: "REPLIED",
+        className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+      };
+    case "MEETING":
+      return {
+        label: "MEETING",
+        className: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      };
+    case "WON":
+    case "CONVERTED":
+      return {
+        label: "WON",
         className: "bg-green-500/10 text-green-400 border-green-500/20",
       };
+    case "LOST":
+    case "DISQUALIFIED":
+      return {
+        label: "LOST",
+        className: "bg-red-500/10 text-red-400 border-red-500/20",
+      };
+    case "REVIEWING":
+      return {
+        label: "REVIEWING",
+        className: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      };
+    default:
+      return { label: norm, className: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
+  }
+}
+
+/**
+ * Get styling for Buyer classification.
+ */
+export function getBuyerClassificationStyle(classification?: string): {
+  label: string;
+  className: string;
+} {
+  const norm = String(classification ?? "UNKNOWN").toUpperCase();
+  switch (norm) {
+    case "BUYER":
+      return { label: "BUYER", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" };
+    case "SELLER":
+      return { label: "SELLER", className: "bg-rose-500/10 text-rose-400 border-rose-500/20" };
+    case "GENERAL":
+      return { label: "GENERAL", className: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
+    default:
+      return { label: "UNKNOWN", className: "bg-zinc-500/10 text-zinc-500 border-zinc-600/20" };
   }
 }
 

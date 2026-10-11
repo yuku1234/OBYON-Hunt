@@ -44,7 +44,8 @@ export class PipelineEngine {
           discoveredAt: new Date().toISOString(),
           detectedNeed: analysis.detectedNeed,
           detectedProblem: analysis.detectedProblem,
-          detectedRequirement: analysis.detectedRequirement,
+          detectedRequirement: analysis.detectedRequirement || analysis.detectedNeed,
+          buyerClassification: "BUYER",
           matchedServices: analysis.matchedServices,
           primaryService: analysis.primaryService,
           intentScore: analysis.intentScore,
@@ -56,7 +57,7 @@ export class PipelineEngine {
           reasoning: analysis.reasoning,
           suggestedOutreach: analysis.suggestedOutreach,
           tags: analysis.tags,
-          status: "new",
+          status: "NEW",
           isBookmarked: false,
           notes: null,
         };
@@ -70,6 +71,11 @@ export class PipelineEngine {
       } catch (err) {
         console.error(`[PipelineEngine] Failed to process signal ${signal.externalId}:`, err);
       }
+    }
+
+    if (newOpportunities.length > 0) {
+      const { dbService } = await import("../db");
+      await dbService.saveOpportunities(newOpportunities);
     }
 
     return {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { dbService } from "@/lib/db";
 import { mockOpportunities } from "@/lib/opportunities/mock-data";
 import {
   formatDate,
@@ -9,9 +10,11 @@ import {
   getBudgetSignalStyle,
   getStatusStyle,
   getServiceDisplayName,
+  getBuyerClassificationStyle,
 } from "@/lib/utils";
 import { IntentScoreRing } from "@/components/opportunities/IntentBadge";
 import { OpportunityActions, CopyOutreachButton } from "@/components/opportunities/OpportunityActions";
+import { LeadStatusNotes } from "@/components/opportunities/LeadStatusNotes";
 import {
   ArrowLeft,
   ExternalLink,
@@ -21,15 +24,23 @@ import {
   Building2,
   Lightbulb,
   Bot,
+  ShieldCheck,
+  Quote,
 } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+async function getOpportunity(id: string) {
+  const fromDb = await dbService.getOpportunityById(id);
+  if (fromDb) return fromDb;
+  return mockOpportunities.find((o) => o.id === id) || null;
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const opp = mockOpportunities.find((o) => o.id === id);
+  const opp = await getOpportunity(id);
   return {
     title: opp ? opp.title : "Opportunity Not Found",
   };
@@ -37,7 +48,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function OpportunityDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const opp = mockOpportunities.find((o) => o.id === id);
+  const opp = await getOpportunity(id);
 
   if (!opp) notFound();
 
@@ -45,6 +56,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
   const urgencyStyle = getUrgencyStyle(opp.urgency);
   const budgetStyle = getBudgetSignalStyle(opp.budgetSignal);
   const statusStyle = getStatusStyle(opp.status);
+  const buyerStyle = getBuyerClassificationStyle(opp.buyerClassification);
 
   return (
     <div>
@@ -66,10 +78,9 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
         Back to Opportunities
       </Link>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "1.5rem", alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "1.5rem", alignItems: "start" }}>
         {/* Main Column */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-
           {/* Header Card */}
           <div className="card" style={{ padding: "1.5rem" }}>
             {/* Badges */}
@@ -78,15 +89,16 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
                 style={{
                   fontSize: "0.6875rem",
                   fontWeight: 600,
-                  color: "#0077b5",
-                  background: "rgba(0,119,181,0.1)",
-                  border: "1px solid rgba(0,119,181,0.2)",
+                  color: "#6366f1",
+                  background: "rgba(99,102,241,0.1)",
+                  border: "1px solid rgba(99,102,241,0.2)",
                   padding: "0.125rem 0.5rem",
                   borderRadius: 9999,
                 }}
               >
-                {opp.sourceName}
+                {opp.sourcePlatform || opp.sourceName}
               </span>
+              <span className={`badge ${buyerStyle.className}`}>{opp.buyerClassification || "BUYER"}</span>
               <span className={`badge ${intentStyle.className}`}>{intentStyle.label}</span>
               <span className={`badge ${statusStyle.className}`}>{statusStyle.label}</span>
             </div>
@@ -116,9 +128,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
             >
               <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
                 <User size={13} /> {opp.authorName}
-                {opp.authorHandle && (
-                  <span style={{ opacity: 0.6 }}>{opp.authorHandle}</span>
-                )}
+                {opp.authorHandle && <span style={{ opacity: 0.6 }}>({opp.authorHandle})</span>}
               </span>
               {opp.companyName && (
                 <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
@@ -131,7 +141,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
                 </span>
               )}
               <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                <Calendar size={13} /> {formatDate(opp.publishedAt, false)}
+                <Calendar size={13} /> Discovered {formatDate(opp.discoveredAt, false)}
               </span>
               <a
                 href={opp.sourceUrl}
@@ -143,31 +153,56 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
                   gap: "0.375rem",
                   color: "#6366f1",
                   textDecoration: "none",
+                  fontWeight: 600,
                 }}
               >
-                <ExternalLink size={13} /> View original
+                <ExternalLink size={13} /> Open Original Source
               </a>
             </div>
           </div>
 
+          {/* Evidence Card */}
+          {opp.evidence && (
+            <div className="card" style={{ padding: "1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.875rem" }}>
+                <Quote size={16} color="#6366f1" />
+                <h2 className="heading-sm">Verifiable Demand Evidence</h2>
+              </div>
+              <blockquote
+                style={{
+                  borderLeft: "3px solid #6366f1",
+                  paddingLeft: "1rem",
+                  margin: 0,
+                  color: "var(--text-secondary)",
+                  fontSize: "0.9375rem",
+                  lineHeight: 1.7,
+                  fontStyle: "italic",
+                }}
+              >
+                &ldquo;{opp.evidence}&rdquo;
+              </blockquote>
+            </div>
+          )}
+
           {/* Original Content */}
           <div className="card" style={{ padding: "1.5rem" }}>
             <h2 className="heading-sm" style={{ marginBottom: "0.875rem" }}>
-              Original Content
+              Full Original Content
             </h2>
-            <blockquote
+            <div
               style={{
-                borderLeft: "3px solid rgba(99,102,241,0.4)",
-                paddingLeft: "1rem",
-                margin: 0,
                 color: "var(--text-secondary)",
-                fontSize: "0.9375rem",
-                lineHeight: 1.7,
-                fontStyle: "italic",
+                fontSize: "0.875rem",
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+                background: "var(--surface-3)",
+                padding: "1rem",
+                borderRadius: "0.5rem",
+                border: "1px solid var(--border-subtle)",
               }}
             >
               {opp.content}
-            </blockquote>
+            </div>
           </div>
 
           {/* AI Signal Analysis */}
@@ -188,7 +223,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
               {[
                 { label: "Detected Need", value: opp.detectedNeed },
                 { label: "Problem Identified", value: opp.detectedProblem },
-                { label: "Specific Requirement", value: opp.detectedRequirement },
+                { label: "Specific Requirement", value: opp.detectedRequirement || opp.detectedNeed },
               ].map(({ label, value }) => (
                 <div
                   key={label}
@@ -227,7 +262,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
                 >
                   <Lightbulb size={13} color="#6366f1" />
                   <div className="text-label" style={{ color: "#a5b4fc" }}>
-                    AI Reasoning
+                    Why this is considered a buyer & Scoring Rationale
                   </div>
                 </div>
                 <p
@@ -256,7 +291,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
             >
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Bot size={16} color="#6366f1" />
-                <h2 className="heading-sm">Suggested Outreach</h2>
+                <h2 className="heading-sm">Suggested Outreach Message</h2>
               </div>
               <CopyOutreachButton text={opp.suggestedOutreach} />
             </div>
@@ -279,6 +314,14 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
 
         {/* Sidebar */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {/* Lead Status & Notes Component */}
+          <LeadStatusNotes
+            opportunityId={opp.id}
+            initialStatus={opp.status}
+            initialNotes={opp.notes}
+            sourceUrl={opp.sourceUrl}
+          />
+
           {/* Score Card */}
           <div className="card" style={{ padding: "1.5rem" }}>
             <h3 className="heading-sm" style={{ marginBottom: "1.25rem" }}>
@@ -307,7 +350,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="text-label">Intent</span>
+                <span className="text-label">Intent Classification</span>
                 <span className={`badge ${intentStyle.className}`}>{intentStyle.label}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -324,7 +367,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
           {/* Matched Services */}
           <div className="card" style={{ padding: "1.25rem" }}>
             <h3 className="heading-sm" style={{ marginBottom: "0.875rem" }}>
-              Recommended Services
+              Matched Services
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
               {opp.matchedServices.map((svc, i) => (
@@ -370,34 +413,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Tags */}
-          {opp.tags.length > 0 && (
-            <div className="card" style={{ padding: "1.25rem" }}>
-              <h3 className="heading-sm" style={{ marginBottom: "0.75rem" }}>
-                Tags
-              </h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
-                {opp.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      fontSize: "0.6875rem",
-                      fontWeight: 500,
-                      padding: "0.125rem 0.5rem",
-                      borderRadius: 9999,
-                      background: "var(--surface-3)",
-                      border: "1px solid var(--border-subtle)",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
+          {/* AI Outreach Action */}
           <OpportunityActions outreachMessage={opp.suggestedOutreach} opportunity={opp} />
         </div>
       </div>
