@@ -1,16 +1,15 @@
+// ============================================================
+// Opportunity Service — Real DB Persistence Layer
+// Zero mock data in production. Connects directly to dbService.
+// ============================================================
+
 import type {
   Opportunity,
   OpportunityStatus,
   ServiceCategory,
   SourceType,
 } from "@/types";
-import { mockOpportunities } from "./mock-data";
-
-// ============================================================
-// Opportunity Service
-// Stub implementation using mock data.
-// Replace method bodies with real Supabase queries in Phase 2.
-// ============================================================
+import { dbService } from "@/lib/db";
 
 export interface OpportunityFilters {
   status?: OpportunityStatus;
@@ -24,11 +23,11 @@ export interface OpportunityFilters {
 
 export class OpportunityService {
   /**
-   * Get all opportunities, optionally filtered.
-   * TODO Phase 2: Replace with Supabase query
+   * Get all opportunities from database, optionally filtered.
    */
   async getAll(filters?: OpportunityFilters): Promise<Opportunity[]> {
-    let results = [...mockOpportunities];
+    const opps = await dbService.getOpportunities();
+    let results = [...opps];
 
     if (filters) {
       if (filters.status) {
@@ -62,58 +61,36 @@ export class OpportunityService {
       }
     }
 
-    // Sort by intent score descending by default
     return results.sort((a, b) => b.intentScore - a.intentScore);
   }
 
   /**
    * Get a single opportunity by ID.
-   * TODO Phase 2: Replace with Supabase query
    */
   async getById(id: string): Promise<Opportunity | null> {
-    return mockOpportunities.find((o) => o.id === id) ?? null;
+    return await dbService.getOpportunityById(id);
   }
 
   /**
    * Update opportunity status.
-   * TODO Phase 2: Replace with Supabase update
    */
   async updateStatus(id: string, status: OpportunityStatus): Promise<boolean> {
-    const opp = mockOpportunities.find((o) => o.id === id);
-    if (!opp) return false;
-    // In mock: mutate in-memory (for demo only)
-    opp.status = status;
-    return true;
-  }
-
-  /**
-   * Toggle bookmark.
-   * TODO Phase 2: Replace with Supabase update
-   */
-  async toggleBookmark(id: string): Promise<boolean> {
-    const opp = mockOpportunities.find((o) => o.id === id);
-    if (!opp) return false;
-    opp.isBookmarked = !opp.isBookmarked;
-    return true;
+    return await dbService.updateStatus(id, status as any);
   }
 
   /**
    * Add a newly discovered opportunity.
    */
   async addOpportunity(opp: Opportunity): Promise<void> {
-    const existingIndex = mockOpportunities.findIndex((o) => o.id === opp.id || o.sourceUrl === opp.sourceUrl);
-    if (existingIndex >= 0) {
-      mockOpportunities[existingIndex] = opp;
-    } else {
-      mockOpportunities.unshift(opp);
-    }
+    await dbService.saveOpportunities([opp]);
   }
 
   /**
    * Get bookmarked opportunities.
    */
   async getBookmarked(): Promise<Opportunity[]> {
-    return mockOpportunities
+    const all = await dbService.getOpportunities();
+    return all
       .filter((o) => o.isBookmarked)
       .sort((a, b) => b.intentScore - a.intentScore);
   }

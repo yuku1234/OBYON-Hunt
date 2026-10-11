@@ -1,11 +1,11 @@
 // ============================================================
 // POST /api/discover
-// Live Production Web Discovery Endpoint
-// Powered by @google/genai with Google Search Grounding.
+// Live Multi-Source Lead Discovery Endpoint
+// Integrates Google Search Grounding, Reddit, X, HN, GitHub, and compliant workflows.
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { runRealWebDiscovery } from "@/lib/ai/discovery";
+import { runMultiSourceDiscovery } from "@/lib/ai/multi-source-discovery";
 import { dbService } from "@/lib/db";
 import type { FreshnessFilter, SearchRun } from "@/types";
 
@@ -20,12 +20,14 @@ export async function POST(req: NextRequest) {
       location = "",
       freshness = "7d",
       minIntentScore = 50,
+      selectedSources = ["google_grounding", "hackernews", "github"],
     } = body as {
       service: string;
       problem: string;
       location?: string;
       freshness?: FreshnessFilter;
       minIntentScore?: number;
+      selectedSources?: string[];
     };
 
     if (!problem || problem.trim().length < 3) {
@@ -35,26 +37,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Run Real Web Discovery (Google Search Grounding)
-    const metrics = await runRealWebDiscovery({
+    // 1. Run Multi-Source Discovery
+    const discoveryResult = await runMultiSourceDiscovery({
       service: service.trim(),
       problem: problem.trim(),
       location: location.trim(),
       freshness: (freshness as FreshnessFilter) || "7d",
       minIntentScore: Number(minIntentScore) || 50,
+      selectedSourceIds: selectedSources,
     });
 
-    const searchRunId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const searchRunId = discoveryResult.searchRunId;
 
-    // Attach searchRunId to each opportunity
-    const opportunitiesWithRunId = metrics.opportunities.map((opp) => ({
-      ...opp,
-      searchRunId,
-    }));
+    // 2. Persist Verified Opportunities (Deduplicated by URL)
+    let dbResult: { savedCount: number; supabaseSaved: boolean; error?: string } = {
+      savedCount: 0,
+      supabaseSaved: false,
+    };
+    if (discoveryResult.opportunities.length > 0) {
+      dbResult = await dbService.saveOpportunities(discoveryResult.opportunities);
+    }
 
-    // 2. Persist to Database (Supabase + resilient local store)
-    const dbResult = await dbService.saveOpportunities(opportunitiesWithRunId);
-
+    // 3. Persist Search Run Audit Record
     const searchRunRecord: SearchRun = {
       id: searchRunId,
       serviceCategory: service,
@@ -62,14 +66,14 @@ export async function POST(req: NextRequest) {
       location,
       freshness: (freshness as FreshnessFilter) || "7d",
       minIntentScore: Number(minIntentScore) || 50,
-      queries: metrics.queriesGenerated,
-      scannedCount: metrics.scannedCount,
-      buyerCount: metrics.buyerCount,
-      sellerCount: metrics.sellerCount,
-      generalCount: metrics.generalCount,
-      unknownCount: metrics.unknownCount,
-      rejectedCount: metrics.rejectedCount,
-      savedCount: opportunitiesWithRunId.length,
+      queries: discoveryResult.queriesGenerated,
+      scannedCount: discoveryResult.scannedCount,
+      buyerCount: discoveryResult.buyerCount,
+      sellerCount: discoveryResult.sellerCount,
+      generalCount: discoveryResult.generalCount,
+      unknownCount: discoveryResult.unknownCount,
+      rejectedCount: discoveryResult.rejectedCount,
+      savedCount: discoveryResult.opportunities.length,
       createdAt: new Date().toISOString(),
     };
 
@@ -79,15 +83,17 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         searchRunId,
-        queriesGenerated: metrics.queriesGenerated,
-        scannedCount: metrics.scannedCount,
-        buyerCount: metrics.buyerCount,
-        sellerCount: metrics.sellerCount,
-        generalCount: metrics.generalCount,
-        unknownCount: metrics.unknownCount,
-        rejectedCount: metrics.rejectedCount,
-        savedCount: opportunitiesWithRunId.length,
-        opportunities: opportunitiesWithRunId,
+        queriesGenerated: discoveryResult.queriesGenerated,
+        scannedCount: discoveryResult.scannedCount,
+        buyerCount: discoveryResult.buyerCount,
+        sellerCount: discoveryResult.sellerCount,
+        generalCount: discoveryResult.generalCount,
+        unknownCount: discoveryResult.unknownCount,
+        rejectedCount: discoveryResult.rejectedCount,
+        savedCount: discoveryResult.opportunities.length,
+        opportunities: discoveryResult.opportunities,
+        sourceOutcomes: discoveryResult.sourceOutcomes,
+        compliantLinks: discoveryResult.compliantLinks,
         supabaseSaved: dbResult.supabaseSaved && runResult.supabaseSaved,
         dbError: dbResult.error || runResult.error,
       },
@@ -95,12 +101,12 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[/api/discover] Error executing live web discovery:", message);
+    console.error("[/api/discover] Error executing multi-source discovery:", message);
 
     return NextResponse.json(
       {
-        error: message || "Failed to execute live web discovery.",
-        failedAt: "Google Search Grounding / Gemini Engine",
+        error: message || "Failed to execute multi-source discovery.",
+        failedAt: "Multi-Source Engine",
       },
       { status: 500 }
     );

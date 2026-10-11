@@ -1,256 +1,441 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { mockSources } from "@/lib/opportunities/mock-data";
-import { formatDate } from "@/lib/utils";
-import type { Source, SourceType } from "@/types";
-import { Globe, CheckCircle, XCircle, RefreshCw, Sparkles, Check } from "lucide-react";
+import {
+  Globe,
+  CheckCircle,
+  AlertTriangle,
+  Lock,
+  RefreshCw,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  Server,
+  Zap,
+} from "lucide-react";
+import type { SourceConnectionStatus, IntegrationMethod } from "@/lib/sources/adapters/types";
 
-function SourceRow({
-  source,
-  onSync,
-  isSyncing,
-}: {
-  source: Source;
-  onSync: (sourceType: SourceType) => void;
-  isSyncing: boolean;
-}) {
-  return (
-    <div
-      className="card"
-      style={{
-        padding: "1.125rem 1.25rem",
-        display: "flex",
-        alignItems: "center",
-        gap: "1rem",
-      }}
-    >
-      {/* Status dot */}
-      <div
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: source.isActive ? "#10b981" : "#52525b",
-          flexShrink: 0,
-          boxShadow: source.isActive ? "0 0 6px rgba(16,185,129,0.5)" : "none",
-        }}
-      />
+interface SourceItem {
+  id: string;
+  name: string;
+  type: string;
+  method: IntegrationMethod;
+  description: string;
+  status: SourceConnectionStatus;
+  statusMessage: string;
+  lastTestedAt: string | null;
+  requiredEnvVars: string[];
+  setupGuide: {
+    title: string;
+    description: string;
+    consoleUrl?: string;
+    requiredEnvVars: Array<{ key: string; description: string; required: boolean }>;
+    complianceNotes: string;
+    steps: string[];
+  };
+  totalOpportunitiesFound: number;
+}
 
-      {/* Name + URL */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--text-primary)" }}>
-          {source.name}
-        </div>
-        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
-          {source.url}
-        </div>
-      </div>
+function getStatusBadge(status: SourceConnectionStatus) {
+  switch (status) {
+    case "connected":
+      return {
+        label: "Connected & Tested",
+        color: "#10b981",
+        bg: "rgba(16,185,129,0.1)",
+        border: "rgba(16,185,129,0.3)",
+        icon: <CheckCircle size={14} color="#10b981" />,
+      };
+    case "configuration_required":
+      return {
+        label: "Configuration Required",
+        color: "#f59e0b",
+        bg: "rgba(245,158,11,0.1)",
+        border: "rgba(245,158,11,0.3)",
+        icon: <AlertTriangle size={14} color="#f59e0b" />,
+      };
+    case "permission_required":
+      return {
+        label: "Permission Required / Workflow Active",
+        color: "#6366f1",
+        bg: "rgba(99,102,241,0.1)",
+        border: "rgba(99,102,241,0.3)",
+        icon: <Lock size={14} color="#6366f1" />,
+      };
+    case "temporarily_unavailable":
+      return {
+        label: "Temporarily Unavailable",
+        color: "#ef4444",
+        bg: "rgba(239,68,68,0.1)",
+        border: "rgba(239,68,68,0.3)",
+        icon: <AlertTriangle size={14} color="#ef4444" />,
+      };
+    case "not_supported":
+    default:
+      return {
+        label: "Not Supported",
+        color: "#71717a",
+        bg: "rgba(113,113,122,0.1)",
+        border: "rgba(113,113,122,0.3)",
+        icon: <Info size={14} color="#71717a" />,
+      };
+  }
+}
 
-      {/* Status */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", minWidth: 110 }}>
-        {source.isActive ? (
-          <>
-            <CheckCircle size={13} color="#10b981" />
-            <span style={{ fontSize: "0.8125rem", color: "#10b981", fontWeight: 500 }}>Active</span>
-          </>
-        ) : (
-          <>
-            <XCircle size={13} color="#52525b" />
-            <span style={{ fontSize: "0.8125rem", color: "#52525b", fontWeight: 500 }}>Inactive</span>
-          </>
-        )}
-      </div>
-
-      {/* Opportunities found */}
-      <div style={{ textAlign: "center", minWidth: 80 }}>
-        <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>
-          {source.totalOpportunitiesFound}
-        </div>
-        <div className="text-label">signals</div>
-      </div>
-
-      {/* Last synced */}
-      <div style={{ textAlign: "right", minWidth: 100 }}>
-        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-          {source.lastScrapedAt ? formatDate(source.lastScrapedAt) : "Just now"}
-        </div>
-        <div className="text-label">last sync</div>
-      </div>
-
-      {/* Actions */}
-      <button
-        className="btn btn-secondary btn-sm"
-        style={{ flexShrink: 0, minWidth: 85 }}
-        disabled={!source.isActive || isSyncing}
-        onClick={() => onSync(source.type)}
-        aria-label={`Sync ${source.name}`}
-      >
-        <RefreshCw size={13} style={{ animation: isSyncing ? "spin 1s linear infinite" : "none" }} />
-        {isSyncing ? "Syncing..." : "Sync Now"}
-      </button>
-    </div>
-  );
+function getMethodLabel(method: IntegrationMethod) {
+  switch (method) {
+    case "grounding":
+      return "Google Grounding";
+    case "official_api":
+      return "Official API";
+    case "compliant_search":
+      return "Compliant Workflow";
+    case "public_index":
+      return "Public Index";
+    default:
+      return method;
+  }
 }
 
 export default function SourcesPage() {
-  const [sources, setSources] = useState<Source[]>(mockSources);
-  const [syncingMap, setSyncingMap] = useState<Record<string, boolean>>({});
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [sources, setSources] = useState<SourceItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [testingMap, setTestingMap] = useState<Record<string, boolean>>({});
+  const [isTestingAll, setIsTestingAll] = useState(false);
+  const [expandedGuideId, setExpandedGuideId] = useState<string | null>(null);
+  const [testResultMessages, setTestResultMessages] = useState<Record<string, string>>({});
 
-  const syncSource = async (sourceType?: SourceType) => {
-    const key = sourceType ?? "all";
-    if (sourceType) {
-      setSyncingMap((prev) => ({ ...prev, [sourceType]: true }));
-    } else {
-      setIsSyncingAll(true);
-    }
-    setSyncMessage(null);
-
+  const loadSources = async () => {
+    setIsLoading(true);
     try {
-      const res = await fetch("/api/sources/sync", {
+      const res = await fetch("/api/sources");
+      if (res.ok) {
+        const data = await res.json();
+        setSources(data.sources || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch sources:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSources();
+  }, []);
+
+  const handleTestSource = async (sourceId: string) => {
+    setTestingMap((prev) => ({ ...prev, [sourceId]: true }));
+    try {
+      const res = await fetch("/api/sources/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceType }),
+        body: JSON.stringify({ sourceId }),
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        setSyncMessage(`Error: ${data.error ?? "Failed to sync"}`);
-        return;
+      if (data.result) {
+        setTestResultMessages((prev) => ({
+          ...prev,
+          [sourceId]: data.result.statusMessage,
+        }));
+        // Update source status locally
+        setSources((prev) =>
+          prev.map((s) =>
+            s.id === sourceId
+              ? {
+                  ...s,
+                  status: data.result.status,
+                  statusMessage: data.result.statusMessage,
+                  lastTestedAt: data.result.testedAt,
+                }
+              : s
+          )
+        );
       }
-
-      setSyncMessage(data.message ?? "Sync completed successfully!");
-
-      // Update source counts & lastScrapedAt locally
-      setSources((prev) =>
-        prev.map((s) => {
-          if (!sourceType || s.type === sourceType) {
-            return {
-              ...s,
-              lastScrapedAt: new Date().toISOString(),
-              totalOpportunitiesFound: s.totalOpportunitiesFound + (data.result?.newOpportunitiesCount ?? 0),
-            };
-          }
-          return s;
-        })
-      );
     } catch {
-      setSyncMessage("Network error triggering live sync.");
+      setTestResultMessages((prev) => ({
+        ...prev,
+        [sourceId]: "Network error testing source.",
+      }));
     } finally {
-      if (sourceType) {
-        setSyncingMap((prev) => ({ ...prev, [sourceType]: false }));
-      } else {
-        setIsSyncingAll(false);
+      setTestingMap((prev) => ({ ...prev, [sourceId]: false }));
+    }
+  };
+
+  const handleTestAll = async () => {
+    setIsTestingAll(true);
+    try {
+      const res = await fetch("/api/sources/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (Array.isArray(data.results)) {
+        const msgMap: Record<string, string> = {};
+        for (const r of data.results) {
+          msgMap[r.sourceId] = r.statusMessage;
+        }
+        setTestResultMessages(msgMap);
+        await loadSources();
       }
+    } catch (err) {
+      console.error("Error testing all sources:", err);
+    } finally {
+      setIsTestingAll(false);
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="Sources"
-        description="Platforms and channels OBYON Signal monitors for buying-intent signals."
-        badge="Live Collection Active"
+        title="Source Management"
+        description="Monitor live adapter connections, developer API credentials, and compliant search workflows."
+        badge={`${sources.length} Registered Sources`}
         actions={
           <button
             className="btn btn-primary"
-            onClick={() => syncSource()}
-            disabled={isSyncingAll}
+            onClick={handleTestAll}
+            disabled={isTestingAll || isLoading}
           >
-            <Sparkles size={15} style={{ animation: isSyncingAll ? "spin 1s linear infinite" : "none" }} />
-            {isSyncingAll ? "Syncing All Sources..." : "Sync All Sources"}
+            <RefreshCw size={14} style={{ animation: isTestingAll ? "spin 1s linear infinite" : "none" }} />
+            {isTestingAll ? "Testing All Adapters..." : "Test All Sources"}
           </button>
         }
       />
 
-      {/* Sync Status Banner */}
-      {syncMessage && (
-        <div
-          style={{
-            background: "rgba(16,185,129,0.08)",
-            border: "1px solid rgba(16,185,129,0.2)",
-            borderRadius: "0.75rem",
-            padding: "0.875rem 1.25rem",
-            marginBottom: "1.5rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-            fontSize: "0.875rem",
-            color: "#10b981",
-          }}
-        >
-          <Check size={16} />
-          {syncMessage}
-        </div>
-      )}
-
-      {/* Banner */}
+      {/* Overview Notice */}
       <div
         style={{
-          background: "rgba(99,102,241,0.05)",
-          border: "1px solid rgba(99,102,241,0.15)",
+          background: "rgba(99,102,241,0.06)",
+          border: "1px solid rgba(99,102,241,0.2)",
           borderRadius: "0.75rem",
           padding: "1rem 1.25rem",
-          marginBottom: "1.5rem",
+          marginBottom: "1.75rem",
           display: "flex",
           alignItems: "center",
-          gap: "0.75rem",
+          gap: "0.875rem",
         }}
       >
-        <Globe size={16} color="#6366f1" />
-        <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", margin: 0 }}>
-          <strong style={{ color: "var(--text-primary)" }}>Phase 3 Active:</strong> Connectors for
-          Hacker News, Reddit, GitHub, and RSS feeds are live. Click <strong>Sync Now</strong> on any active source to ingest real posts and score intent with Gemini AI.
+        <Server size={18} color="#6366f1" style={{ flexShrink: 0 }} />
+        <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+          <strong style={{ color: "var(--text-primary)" }}>Zero-Mock Architecture:</strong> Sources report their genuine connection state. OBYON Hunt never fabricates results, scrapes behind logins, or shows a source as connected until a real API test succeeds.
         </p>
       </div>
 
       {/* Sources List */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-        {sources.map((source) => (
-          <SourceRow
-            key={source.id}
-            source={source}
-            onSync={(type) => syncSource(type)}
-            isSyncing={Boolean(syncingMap[source.type]) || isSyncingAll}
-          />
-        ))}
-      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {isLoading ? (
+          <div className="card" style={{ padding: "2.5rem", textAlign: "center", color: "var(--text-muted)" }}>
+            <RefreshCw size={24} style={{ animation: "spin 1s linear infinite", margin: "0 auto 1rem" }} />
+            Loading source adapters and connection health...
+          </div>
+        ) : (
+          sources.map((source) => {
+            const badge = getStatusBadge(source.status);
+            const isTesting = Boolean(testingMap[source.id]) || isTestingAll;
+            const isExpanded = expandedGuideId === source.id;
+            const testMsg = testResultMessages[source.id];
 
-      {/* Coming soon */}
-      <div style={{ marginTop: "2rem" }}>
-        <h2 className="heading-sm" style={{ marginBottom: "1rem", color: "var(--text-muted)" }}>
-          Additional Connectors Roadmap
-        </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-            gap: "0.625rem",
-          }}
-        >
-          {["Fiverr", "Product Hunt", "Quora", "YouTube Comments", "Facebook Groups", "Discord"].map(
-            (name) => (
+            return (
               <div
-                key={name}
+                key={source.id}
+                className="card"
                 style={{
-                  padding: "0.75rem 1rem",
-                  borderRadius: "0.5rem",
-                  background: "var(--surface-2)",
-                  border: "1px dashed var(--border-subtle)",
-                  fontSize: "0.875rem",
-                  color: "var(--text-muted)",
-                  textAlign: "center",
+                  padding: "1.25rem 1.5rem",
+                  borderColor: isExpanded ? "rgba(99,102,241,0.3)" : undefined,
                 }}
               >
-                {name}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
+                  {/* Left: Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                        {source.name}
+                      </span>
+                      {/* Integration Method Tag */}
+                      <span
+                        style={{
+                          fontSize: "0.6875rem",
+                          fontWeight: 500,
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "9999px",
+                          background: "var(--surface-3)",
+                          color: "var(--text-muted)",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        {getMethodLabel(source.method)}
+                      </span>
+                      {/* Status Badge */}
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.375rem",
+                          padding: "0.1875rem 0.625rem",
+                          borderRadius: "9999px",
+                          background: badge.bg,
+                          border: `1px solid ${badge.border}`,
+                          fontSize: "0.75rem",
+                          fontWeight: 500,
+                          color: badge.color,
+                        }}
+                      >
+                        {badge.icon}
+                        {badge.label}
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", margin: "0.375rem 0 0.5rem 0" }}>
+                      {source.description}
+                    </p>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", fontSize: "0.75rem", color: "var(--text-muted)", flexWrap: "wrap" }}>
+                      <span>
+                        Opportunities Found: <strong style={{ color: "var(--text-primary)" }}>{source.totalOpportunitiesFound}</strong>
+                      </span>
+                      <span>
+                        Last Check: {source.lastTestedAt ? new Date(source.lastTestedAt).toLocaleTimeString() : "Not tested yet"}
+                      </span>
+                    </div>
+
+                    {/* Status / Test message */}
+                    <div
+                      style={{
+                        marginTop: "0.625rem",
+                        fontSize: "0.75rem",
+                        color: source.status === "connected" ? "#10b981" : "var(--text-muted)",
+                        background: "var(--surface-2)",
+                        padding: "0.375rem 0.75rem",
+                        borderRadius: "0.375rem",
+                        display: "inline-block",
+                      }}
+                    >
+                      {testMsg || source.statusMessage}
+                    </div>
+                  </div>
+
+                  {/* Right: Actions */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handleTestSource(source.id)}
+                      disabled={isTesting}
+                      aria-label={`Test connection for ${source.name}`}
+                    >
+                      <RefreshCw
+                        size={13}
+                        style={{ animation: isTesting ? "spin 1s linear infinite" : "none" }}
+                      />
+                      {isTesting ? "Testing..." : "Test"}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setExpandedGuideId(isExpanded ? null : source.id)}
+                      style={{ padding: "0.375rem 0.5rem" }}
+                      title="Setup Guide"
+                    >
+                      {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Collapsible Setup & Compliance Guide */}
+                {isExpanded && (
+                  <div
+                    style={{
+                      marginTop: "1.25rem",
+                      paddingTop: "1.25rem",
+                      borderTop: "1px solid var(--border-subtle)",
+                      background: "rgba(0,0,0,0.15)",
+                      padding: "1rem",
+                      borderRadius: "0.5rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+                      <h4 style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
+                        {source.setupGuide.title}
+                      </h4>
+                      {source.setupGuide.consoleUrl && (
+                        <a
+                          href={source.setupGuide.consoleUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#6366f1",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            textDecoration: "none",
+                          }}
+                        >
+                          Developer Console <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Required Env Vars */}
+                    {source.setupGuide.requiredEnvVars.length > 0 && (
+                      <div style={{ marginBottom: "0.75rem" }}>
+                        <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.375rem" }}>
+                          Required in .env.local:
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                          {source.setupGuide.requiredEnvVars.map((v) => (
+                            <div
+                              key={v.key}
+                              style={{
+                                fontSize: "0.75rem",
+                                background: "var(--surface-3)",
+                                padding: "0.375rem 0.625rem",
+                                borderRadius: "0.375rem",
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <code style={{ color: "#a5b4fc" }}>{v.key}</code>
+                              <span style={{ color: "var(--text-muted)" }}>{v.description}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step-by-Step Instructions */}
+                    <div style={{ marginBottom: "0.75rem" }}>
+                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.25rem" }}>
+                        Setup Instructions:
+                      </div>
+                      <ol style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.75rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                        {source.setupGuide.steps.map((step, idx) => (
+                          <li key={idx}>{step}</li>
+                        ))}
+                      </ol>
+                    </div>
+
+                    {/* Compliance Notes */}
+                    <div
+                      style={{
+                        fontSize: "0.6875rem",
+                        color: "var(--text-muted)",
+                        background: "rgba(99,102,241,0.05)",
+                        padding: "0.5rem 0.75rem",
+                        borderRadius: "0.375rem",
+                        borderLeft: "2px solid #6366f1",
+                      }}
+                    >
+                      <strong>Compliance:</strong> {source.setupGuide.complianceNotes}
+                    </div>
+                  </div>
+                )}
               </div>
-            )
-          )}
-        </div>
+            );
+          })
+        )}
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

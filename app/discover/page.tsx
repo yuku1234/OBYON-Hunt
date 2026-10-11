@@ -9,17 +9,15 @@ import {
   Search,
   Sparkles,
   AlertCircle,
-  Copy,
-  CheckCircle,
   Globe,
   Radio,
-  Sliders,
-  Filter,
   Check,
-  X,
-  Flame,
+  ExternalLink,
+  Layers,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
-import { getServiceDisplayName } from "@/lib/utils";
 
 const SERVICE_OPTIONS = [
   { value: "AI Agents", label: "AI Agents" },
@@ -31,7 +29,9 @@ const SERVICE_OPTIONS = [
   { value: "Mobile Development", label: "Mobile Development" },
   { value: "Custom Software", label: "Custom Software" },
   { value: "Video Editing", label: "Video Editing" },
+  { value: "AI Video", label: "AI Video" },
   { value: "WhatsApp Automation", label: "WhatsApp Automation" },
+  { value: "CRM Automation", label: "CRM Automation" },
   { value: "Data Automation", label: "Data Automation" },
   { value: "UI/UX Design", label: "UI/UX Design" },
   { value: "Cloud / DevOps", label: "Cloud / DevOps" },
@@ -45,13 +45,32 @@ const FRESHNESS_OPTIONS: Array<{ value: FreshnessFilter; label: string }> = [
   { value: "30d", label: "Past 30 days" },
 ];
 
-const DISCOVERY_STAGES = [
-  "Searching public web...",
-  "Analyzing demand signals...",
-  "Filtering non-buyers...",
-  "Ranking opportunities...",
-  "Saving verified opportunities...",
+const AVAILABLE_SOURCES = [
+  { id: "google_grounding", name: "Google Web Grounding", badge: "Live Gemini", isDefault: true },
+  { id: "hackernews", name: "Hacker News", badge: "Public Index", isDefault: true },
+  { id: "github", name: "GitHub Issues", badge: "Open Issues", isDefault: true },
+  { id: "reddit", name: "Reddit", badge: "OAuth API", isDefault: false },
+  { id: "x_twitter", name: "X (Twitter)", badge: "API v2", isDefault: false },
+  { id: "linkedin", name: "LinkedIn", badge: "Compliant Search", isDefault: false },
+  { id: "meta_facebook", name: "Meta (FB / IG)", badge: "Compliant Search", isDefault: false },
 ];
+
+const DISCOVERY_STAGES = [
+  "Querying active sources concurrently...",
+  "Analyzing real buyer demand signals...",
+  "Rejecting agencies, sellers, and general articles...",
+  "Calculating deterministic 0–100 intent scores...",
+  "Deduplicating and persisting verified opportunities...",
+];
+
+interface SourceOutcome {
+  sourceId: string;
+  sourceName: string;
+  scannedCount: number;
+  buyerCount: number;
+  rejectedCount: number;
+  error?: string;
+}
 
 export default function DiscoverPage() {
   // Discovery Form State
@@ -60,6 +79,11 @@ export default function DiscoverPage() {
   const [location, setLocation] = useState("");
   const [freshness, setFreshness] = useState<FreshnessFilter>("7d");
   const [minIntentScore, setMinIntentScore] = useState(70);
+  const [selectedSources, setSelectedSources] = useState<string[]>([
+    "google_grounding",
+    "hackernews",
+    "github",
+  ]);
 
   // Discovery Run State
   const [isRunning, setIsRunning] = useState(false);
@@ -77,6 +101,8 @@ export default function DiscoverPage() {
     unknownCount: number;
     rejectedCount: number;
     savedCount: number;
+    sourceOutcomes?: SourceOutcome[];
+    compliantLinks?: Record<string, string>;
     supabaseSaved?: boolean;
     dbError?: string;
   } | null>(null);
@@ -88,7 +114,12 @@ export default function DiscoverPage() {
   const [isAnalyzingManual, setIsAnalyzingManual] = useState(false);
   const [manualResult, setManualResult] = useState<IntentAnalysis | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
-  const [manualCopied, setManualCopied] = useState(false);
+
+  const toggleSource = (sourceId: string) => {
+    setSelectedSources((prev) =>
+      prev.includes(sourceId) ? prev.filter((id) => id !== sourceId) : [...prev, sourceId]
+    );
+  };
 
   const handleDiscover = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -101,7 +132,6 @@ export default function DiscoverPage() {
     setSearchRunMetrics(null);
     setCurrentStageIndex(0);
 
-    // Animate stages while waiting for server response
     const stageInterval = setInterval(() => {
       setCurrentStageIndex((prev) => (prev < DISCOVERY_STAGES.length - 1 ? prev + 1 : prev));
     }, 2500);
@@ -116,13 +146,14 @@ export default function DiscoverPage() {
           location: location.trim(),
           freshness,
           minIntentScore,
+          selectedSources,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Live web discovery failed");
+        throw new Error(data.error || "Multi-source lead discovery failed");
       }
 
       setSearchRunMetrics({
@@ -134,6 +165,8 @@ export default function DiscoverPage() {
         unknownCount: data.unknownCount || 0,
         rejectedCount: data.rejectedCount || 0,
         savedCount: data.savedCount || 0,
+        sourceOutcomes: data.sourceOutcomes,
+        compliantLinks: data.compliantLinks,
         supabaseSaved: data.supabaseSaved,
         dbError: data.dbError,
       });
@@ -177,8 +210,8 @@ export default function DiscoverPage() {
     <div>
       <PageHeader
         title="Discover Real Opportunities"
-        description="Search the live public web for verified buyer demand signals powered by Google Search Grounding."
-        badge="Live Web Discovery"
+        description="Search live multi-source channels for genuine buyer demand signals with zero synthetic leads."
+        badge="Live Multi-Source Engine"
       />
 
       {/* ── Main Discovery Form Card ── */}
@@ -206,7 +239,7 @@ export default function DiscoverPage() {
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.25rem" }}>
           <Globe size={18} color="#6366f1" />
           <h2 className="heading-sm" style={{ margin: 0, fontSize: "1.1rem" }}>
-            Real-Time Demand Search
+            Multi-Source Demand Search
           </h2>
         </div>
 
@@ -270,7 +303,7 @@ export default function DiscoverPage() {
                 htmlFor="discover-location-input"
                 style={{ display: "block", marginBottom: "0.375rem" }}
               >
-                Location / Geography
+                Location / Context
               </label>
               <input
                 id="discover-location-input"
@@ -289,7 +322,7 @@ export default function DiscoverPage() {
                 htmlFor="discover-freshness-input"
                 style={{ display: "block", marginBottom: "0.375rem" }}
               >
-                Freshness
+                Freshness Filter
               </label>
               <select
                 id="discover-freshness-input"
@@ -341,12 +374,72 @@ export default function DiscoverPage() {
             </div>
           </div>
 
+          {/* 6. Sources to Search Checkboxes */}
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label className="text-label" style={{ display: "block", marginBottom: "0.5rem" }}>
+              Select Discovery Sources
+            </label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              {AVAILABLE_SOURCES.map((src) => {
+                const isChecked = selectedSources.includes(src.id);
+                return (
+                  <button
+                    key={src.id}
+                    type="button"
+                    onClick={() => toggleSource(src.id)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.4375rem 0.875rem",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.8125rem",
+                      fontWeight: 500,
+                      background: isChecked ? "rgba(99,102,241,0.18)" : "var(--surface-3)",
+                      border: `1px solid ${isChecked ? "#6366f1" : "var(--border-subtle)"}`,
+                      color: isChecked ? "#e0e7ff" : "var(--text-secondary)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: "3px",
+                        border: `1px solid ${isChecked ? "#6366f1" : "var(--text-muted)"}`,
+                        background: isChecked ? "#6366f1" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {isChecked && <Check size={11} color="white" />}
+                    </span>
+                    {src.name}
+                    <span
+                      style={{
+                        fontSize: "0.6875rem",
+                        color: "var(--text-muted)",
+                        background: "rgba(0,0,0,0.2)",
+                        padding: "0.125rem 0.375rem",
+                        borderRadius: "3px",
+                      }}
+                    >
+                      {src.badge}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Primary Action Button */}
           <button
             id="discover-submit-button"
             type="submit"
             className="btn btn-primary btn-lg"
-            disabled={isRunning || !problem.trim()}
+            disabled={isRunning || !problem.trim() || selectedSources.length === 0}
             style={{
               minWidth: 260,
               padding: "0.875rem 1.75rem",
@@ -368,7 +461,7 @@ export default function DiscoverPage() {
                     display: "inline-block",
                   }}
                 />
-                DISCOVERING REAL OPPORTUNITIES...
+                SEARCHING LIVE SOURCES...
               </>
             ) : (
               <>
@@ -388,13 +481,12 @@ export default function DiscoverPage() {
               background: "rgba(99,102,241,0.06)",
               border: "1px solid rgba(99,102,241,0.25)",
               borderRadius: "0.5rem",
-              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
               <Radio size={14} color="#6366f1" style={{ animation: "spin 2s linear infinite" }} />
               <strong style={{ fontSize: "0.875rem", color: "#a5b4fc", textTransform: "uppercase" }}>
-                ● LIVE WEB DISCOVERY IN PROGRESS
+                ● MULTI-SOURCE DISCOVERY IN PROGRESS
               </strong>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -462,7 +554,7 @@ export default function DiscoverPage() {
             <AlertCircle size={18} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
               <strong style={{ fontSize: "0.875rem", color: "#fca5a5", display: "block" }}>
-                Live Discovery Error
+                Discovery Execution Error
               </strong>
               <p style={{ fontSize: "0.8125rem", color: "#fecaca", margin: "0.25rem 0 0 0", lineHeight: 1.5 }}>
                 {discoveryError}
@@ -472,7 +564,7 @@ export default function DiscoverPage() {
         )}
       </div>
 
-      {/* ── Search Metrics Breakdown Banner ── */}
+      {/* ── Search Metrics & Per-Source Outcomes Breakdown ── */}
       {searchRunMetrics && !isRunning && (
         <div
           className="card"
@@ -483,26 +575,28 @@ export default function DiscoverPage() {
             border: "1px solid var(--border-default)",
           }}
         >
+          {/* Top Level Numbers */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
               gap: "1rem",
               textAlign: "center",
+              marginBottom: "1.25rem",
             }}
           >
             <div>
               <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-primary)" }}>
                 {searchRunMetrics.scannedCount}
               </div>
-              <div className="text-label">Source Results Found</div>
+              <div className="text-label">Results Inspected</div>
             </div>
 
             <div>
               <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#10b981" }}>
                 {searchRunMetrics.buyerCount}
               </div>
-              <div className="text-label">Buyer Opportunities</div>
+              <div className="text-label">Buyer Demand Found</div>
             </div>
 
             <div>
@@ -520,27 +614,90 @@ export default function DiscoverPage() {
             </div>
           </div>
 
-          {searchRunMetrics.queries.length > 0 && (
-            <div style={{ marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--border-subtle)" }}>
-              <div className="text-label" style={{ marginBottom: "0.375rem" }}>
-                Search Queries Generated ({searchRunMetrics.queries.length}):
+          {/* Per-Source Execution Outcomes */}
+          {searchRunMetrics.sourceOutcomes && searchRunMetrics.sourceOutcomes.length > 0 && (
+            <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--border-subtle)" }}>
+              <div className="text-label" style={{ marginBottom: "0.625rem" }}>
+                Per-Source Execution Breakdown:
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
-                {searchRunMetrics.queries.map((q, i) => (
-                  <span
-                    key={i}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "0.625rem" }}>
+                {searchRunMetrics.sourceOutcomes.map((so) => (
+                  <div
+                    key={so.sourceId}
                     style={{
-                      fontSize: "0.6875rem",
                       background: "var(--surface-3)",
-                      padding: "0.125rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      color: "var(--text-secondary)",
-                      fontFamily: "var(--font-mono)",
+                      padding: "0.75rem",
+                      borderRadius: "0.375rem",
+                      border: "1px solid var(--border-subtle)",
+                      fontSize: "0.75rem",
                     }}
                   >
-                    {q}
-                  </span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.375rem" }}>
+                      <strong style={{ color: "var(--text-primary)" }}>{so.sourceName}</strong>
+                      {so.error ? (
+                        <span style={{ color: "#ef4444", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                          <XCircle size={12} /> Error
+                        </span>
+                      ) : (
+                        <span style={{ color: "#10b981", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                          <CheckCircle2 size={12} /> Active
+                        </span>
+                      )}
+                    </div>
+                    {so.error ? (
+                      <div style={{ color: "#f87171", fontSize: "0.6875rem", lineHeight: 1.4 }}>
+                        {so.error}
+                      </div>
+                    ) : (
+                      <div style={{ color: "var(--text-muted)" }}>
+                        Inspected: <strong style={{ color: "var(--text-secondary)" }}>{so.scannedCount}</strong> | Buyers: <strong style={{ color: "#10b981" }}>{so.buyerCount}</strong>
+                      </div>
+                    )}
+                  </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Compliant Direct Search Links */}
+          {searchRunMetrics.compliantLinks && Object.keys(searchRunMetrics.compliantLinks).length > 0 && (
+            <div style={{ marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--border-subtle)" }}>
+              <div className="text-label" style={{ marginBottom: "0.375rem" }}>
+                Compliant Direct Search Links (Open Live Results):
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                {Object.entries(searchRunMetrics.compliantLinks).map(([k, url]) => {
+                  const label =
+                    k === "linkedin"
+                      ? "LinkedIn Live Posts"
+                      : k === "x_twitter"
+                      ? "X Live Tweets"
+                      : k === "meta_facebook"
+                      ? "Facebook Group Posts"
+                      : k === "reddit"
+                      ? "Reddit Search"
+                      : `${k} search`;
+
+                  return (
+                    <a
+                      key={k}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-ghost btn-sm"
+                      style={{
+                        fontSize: "0.75rem",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.375rem",
+                        background: "var(--surface-3)",
+                        border: "1px solid var(--border-subtle)",
+                      }}
+                    >
+                      {label} <ExternalLink size={12} />
+                    </a>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -572,7 +729,7 @@ export default function DiscoverPage() {
             <EmptyState
               icon={Search}
               title="No verified buyer opportunities found for this search."
-              description="Our AI filtered all non-buyers, sellers, and generic articles. Try adjusting your problem description or lowering the minimum intent score."
+              description="All inspected results were non-buyers, sellers, or did not meet the intent threshold. Try broadening your problem description or lowering the minimum intent score."
             />
           )}
         </div>

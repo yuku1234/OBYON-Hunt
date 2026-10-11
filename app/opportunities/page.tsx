@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { OpportunityTable } from "@/components/opportunities/OpportunityTable";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { mockOpportunities } from "@/lib/opportunities/mock-data";
 import type { Opportunity, ServiceCategory, LeadStatus } from "@/types";
-import { LayoutGrid, List, Zap, RefreshCw } from "lucide-react";
+import { LayoutGrid, List, Zap, RefreshCw, Compass } from "lucide-react";
 
 const SERVICE_FILTER_OPTIONS: Array<{ value: ServiceCategory | "all"; label: string }> = [
   { value: "all", label: "All Services" },
@@ -16,6 +16,8 @@ const SERVICE_FILTER_OPTIONS: Array<{ value: ServiceCategory | "all"; label: str
   { value: "ai_automation", label: "AI Automation" },
   { value: "saas_development", label: "SaaS Development" },
   { value: "web_development", label: "Web Development" },
+  { value: "mobile_development", label: "Mobile Development" },
+  { value: "custom_software", label: "Custom Software" },
   { value: "video_editing", label: "Video Editing" },
   { value: "whatsapp_automation", label: "WhatsApp Automation" },
   { value: "data_automation", label: "Data Automation" },
@@ -33,8 +35,8 @@ const STATUS_FILTER_OPTIONS = [
 ];
 
 export default function OpportunitiesPage() {
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(mockOpportunities);
-  const [isLoading, setIsLoading] = useState(false);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState<"cards" | "table">("cards");
   const [serviceFilter, setServiceFilter] = useState<ServiceCategory | "all">("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -46,9 +48,7 @@ export default function OpportunitiesPage() {
       const res = await fetch("/api/opportunities");
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.opportunities) && data.opportunities.length > 0) {
-          setOpportunities(data.opportunities);
-        }
+        setOpportunities(Array.isArray(data.opportunities) ? data.opportunities : []);
       }
     } catch (err) {
       console.error("Failed to fetch opportunities from DB:", err);
@@ -87,7 +87,7 @@ export default function OpportunitiesPage() {
       <PageHeader
         title="Opportunities"
         description="All verified buying signals and buyer leads — sorted by intent strength."
-        badge={`${filtered.length} total`}
+        badge={`${filtered.length} verified`}
         actions={
           <button
             className="btn btn-secondary btn-sm"
@@ -173,21 +173,21 @@ export default function OpportunitiesPage() {
       </div>
 
       {/* Results */}
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div className="card" style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
+          <RefreshCw size={24} style={{ animation: "spin 1s linear infinite", margin: "0 auto 1rem" }} />
+          Loading verified opportunities...
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={Zap}
-          title="No verified buyer opportunities match your filters"
-          description="Try changing the service category or pipeline status filter to view more leads."
+          title="No verified buyer opportunities found in the pipeline"
+          description="Run a live multi-source discovery search on the Discover page to identify real, active client demand."
           action={
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setServiceFilter("all");
-                setStatusFilter("all");
-              }}
-            >
-              Clear filters
-            </button>
+            <Link href="/discover" className="btn btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              <Compass size={15} />
+              Discover Opportunities
+            </Link>
           }
         />
       ) : view === "cards" ? (

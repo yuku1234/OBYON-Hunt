@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { dbService } from "@/lib/db";
-import { mockOpportunities } from "@/lib/opportunities/mock-data";
 import {
   formatDate,
   getIntentStrengthStyle,
@@ -33,9 +32,7 @@ interface PageProps {
 }
 
 async function getOpportunity(id: string) {
-  const fromDb = await dbService.getOpportunityById(id);
-  if (fromDb) return fromDb;
-  return mockOpportunities.find((o) => o.id === id) || null;
+  return await dbService.getOpportunityById(id);
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
